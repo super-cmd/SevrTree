@@ -1,0 +1,113 @@
+:root {
+  --app-bg: #f4f6fa;
+  --app-bg-soft: #ffffff;
+  --app-border: rgba(15, 23, 42, 0.08);
+  --app-text-muted: #6b7280;
+}
+
+html[data-theme='dark'] {
+  --app-bg: #10131a;
+  --app-bg-soft: #171b24;
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-text-muted: #8b93a3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--app-bg);
+  font-family: 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 140, 160, 0.35);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+.muted {
+  color: var(--app-text-muted);
+}
+
+.page {
+  padding: 20px 24px 32px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.card-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.stat-card {
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: var(--app-bg-soft);
+  border: 1px solid var(--app-border);
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 650;
+  margin-top: 6px;
+  line-height: 1.1;
+}
+
+.stat-foot {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

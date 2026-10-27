@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并发布
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: 构建前端
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 构建后端
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $version = "${{ github.ref_name }}"
+          $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          go vet ./...
+          go build -trimpath -ldflags "-s -w -X main.version=$version -X main.buildTime=$buildTime" -o dist/sevrtree.exe ./cmd/sevrtree
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "BUILD_TIME=$buildTime" >> $env:GITHUB_ENV
+
+      - name: 下载 nssm
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile nssm.zip -MaximumRetryCount 3 -RetryIntervalSec 5
+          Expand-Archive nssm.zip -DestinationPath nssm
+          Copy-Item "nssm/nssm-2.24/win64/nssm.exe" dist/nssm.exe
+
+      - name: 打包并生成校验和
+        shell: pwsh
+        run: |
+          $name = "SevrTree_$env:VERSION-windows-amd64"
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item dist/sevrtree.exe, dist/nssm.exe, README.md, LICENSE package/
+          Compress-Archive -Path "package/*" -DestinationPath "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File checksums.txt -Encoding ascii
+          "ASSET=$name.zip" >> $env:GITHUB_ENV
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SevrTree ${{ github.ref_name }}
+          files: |
+            ${{ env.ASSET }}
+            checksums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

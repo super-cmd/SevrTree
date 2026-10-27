@@ -1,0 +1,26 @@
+# 依赖缓存（pnpm 本地 store / cache）
+node_modules/
+.pnpm-store/
+.pnpm-cache/
+
+# 运行期数据（数据库、日志、任务输出、初始口令）
+data/
+/dist/
+
+# 前端构建产物，仅保留占位文件以保证全新克隆后 go:embed 可编译
+web/dist/*
+!web/dist/.gitkeep
+
+# 第三方二进制（nssm 需自行下载后与 sevrtree.exe 同目录放置）
+nssm.exe
+
+# 临时文件
+.screenshots/
+*.log
+*.tmp
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

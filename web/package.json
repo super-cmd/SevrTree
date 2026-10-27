@@ -1,0 +1,27 @@
+{
+  "name": "sevrtree-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vicons/ionicons5": "latest",
+    "naive-ui": "latest",
+    "pinia": "latest",
+    "vue": "latest",
+    "vue-router": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@vitejs/plugin-vue": "latest",
+    "typescript": "^5.9.3",
+    "unplugin-auto-import": "latest",
+    "unplugin-vue-components": "latest",
+    "vite": "latest",
+    "vue-tsc": "latest"
+  }
+}
