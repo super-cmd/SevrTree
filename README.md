@@ -63,7 +63,7 @@ go build -trimpath -ldflags "-s -w" -o dist/sevrtree.exe ./cmd/sevrtree
 copy nssm.exe dist\
 ```
 
-推送 `v*` 标签即可触发 GitHub Actions 自动构建并创建 Release，产物含 `sevrtree.exe`、`nssm.exe`、`README.md`、`LICENSE` 与 `checksums.txt`：
+推送 `v*` 标签即可触发 GitHub Actions 自动构建并创建 Release，产物含 `sevrtree.exe`、`nssm.exe`、`README.md`、`LICENSE`，SHA256 校验值写入 Release 正文：
 
 ```powershell
 git tag v0.1.0

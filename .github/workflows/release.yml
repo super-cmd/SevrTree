@@ -59,7 +59,7 @@ jobs:
           Expand-Archive nssm.zip -DestinationPath nssm
           Copy-Item "nssm/nssm-2.24/win64/nssm.exe" dist/nssm.exe
 
-      - name: 打包并生成校验和
+      - name: 打包
         shell: pwsh
         run: |
           $name = "SevrTree_$env:VERSION-windows-amd64"
@@ -67,16 +67,24 @@ jobs:
           Copy-Item dist/sevrtree.exe, dist/nssm.exe, README.md, LICENSE package/
           Compress-Archive -Path "package/*" -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File checksums.txt -Encoding ascii
           "ASSET=$name.zip" >> $env:GITHUB_ENV
+          "CHECKSUM=$hash  $name.zip" >> $env:GITHUB_ENV
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: SevrTree ${{ github.ref_name }}
+          body: |
+            Windows amd64 发布包，内含 `sevrtree.exe`、`nssm.exe`、`README.md`、`LICENSE`。
+
+            **SHA256**
+
+            ```
+            ${{ env.CHECKSUM }}
+            ```
+
+            完整变更：${{ github.server_url }}/${{ github.repository }}/commits/${{ github.ref_name }}
           files: |
             ${{ env.ASSET }}
-            checksums.txt
-          generate_release_notes: true
           fail_on_unmatched_files: true
