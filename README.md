@@ -1,6 +1,6 @@
 # SevrTree
 
-Windows 进程依赖分析与开机启动管理器：采集进程启动链、推导服务依赖，并将运行中的进程登记为按顺序编排的自启任务。
+Windows / Linux 进程依赖分析与开机启动管理器：采集进程启动链、推导服务依赖，并将运行中的进程登记为按顺序编排的自启任务。
 
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42B883?logo=vue.js&logoColor=white)](https://vuejs.org/)
@@ -9,7 +9,7 @@ Windows 进程依赖分析与开机启动管理器：采集进程启动链、推
 
 ## 功能特性
 
-- **进程采集**：WMI `Win32_Process` 与 gopsutil 双通道，读取全量命令行、父进程、运行用户、CPU/内存与监听端口。
+- **进程采集**：Windows 走 WMI `Win32_Process` + gopsutil，Linux 走 `/proc` + gopsutil，读取全量命令行、父进程、运行用户、CPU/内存与监听端口。
 - **启动链还原**：识别 explorer、services.exe 与脚本拉起，展示 `cmd.exe → xxx.bat → 目标进程` 的完整链路。
 - **依赖推导**：基于 TCP LISTEN、本机 ESTABLISHED 连接与服务特征库（nginx、MySQL、Redis 等），聚合服务依赖拓扑。
 - **一键加入自启**：将运行中的进程直接登记为任务，自动带出可执行文件、命令行参数、工作目录与健康检查端口。
@@ -17,9 +17,19 @@ Windows 进程依赖分析与开机启动管理器：采集进程启动链、推
 - **任务托管**：环境变量、停止超时、异常退出重启与次数上限，任务输出日志实时查看。
 - **访问控制**：仅监听回环地址，口令登录、会话管理、失败锁定与操作审计。
 
-## 基于 NSSM
+## 平台支持
 
-开机自启由 [NSSM](https://nssm.cc/)（Non-Sucking Service Manager）提供。原版负责服务层工作：安装与移除服务、设置启动类型、启动/停止/重启、stdout 与 stderr 重定向及按大小轮转、进程退出后的重启策略。
+| 能力 | Windows | Linux |
+| --- | --- | --- |
+| 进程采集 | WMI `Win32_Process` + gopsutil | `/proc` + gopsutil |
+| 启动链还原 | 父进程 + 脚本/终端识别 | 父进程 + 脚本识别 |
+| 依赖推导 | 端口 + 本机连接 + 特征库 | 相同 |
+| 开机自启 | nssm 注册 Windows 服务 | systemd 单元 `sevrtree.service` |
+| 权限要求 | 管理员（读取其他用户命令行） | root（读取其他用户命令行 / 安装单元） |
+
+## 基于 NSSM / systemd
+
+开机自启在 Windows 上由 [NSSM](https://nssm.cc/)（Non-Sucking Service Manager）提供，Linux 上由 systemd 提供。原版负责服务层工作：安装与移除服务、设置启动类型、启动/停止/重启、stdout 与 stderr 重定向及轮转、进程退出后的重启策略。
 
 SevrTree 在其上补充进程层能力：
 
@@ -37,14 +47,14 @@ SevrTree 在其上补充进程层能力：
 | 存储 | SQLite（`modernc.org/sqlite`，纯 Go，WAL 模式） |
 | 前端 | Vue 3.5、TypeScript 5.9、Vite 8、Naive UI 2.45、Pinia、Vue Router |
 | 包管理 | pnpm 10 |
-| 服务托管 | nssm |
+| 服务托管 | nssm（Windows）/ systemd（Linux） |
 
 ## 前置要求
 
-- Windows 10 / 11
+- Windows 10 / 11，或启用 systemd 的 Linux（amd64）
 - Go 1.26 及以上
 - Node.js 22 及以上、pnpm 10 及以上
-- [nssm.exe](https://nssm.cc/download)（仅开机自启功能需要）
+- [nssm.exe](https://nssm.cc/download)（仅 Windows 开机自启需要）
 
 ## 构建
 
@@ -59,11 +69,20 @@ cd ..
 go vet ./...
 go build -trimpath -ldflags "-s -w" -o dist/sevrtree.exe ./cmd/sevrtree
 
-# 开机自启所需
+# 开机自启所需（Windows）
 copy nssm.exe dist\
 ```
 
-推送 `v*` 标签即可触发 GitHub Actions 自动构建并创建 Release，产物含 `sevrtree.exe`、`nssm.exe`、`README.md`、`LICENSE`，SHA256 校验值写入 Release 正文：
+Linux 本机构建：
+
+```bash
+cd web && pnpm install --frozen-lockfile && pnpm build && cd ..
+go vet ./...
+go build -trimpath -ldflags "-s -w" -o dist/sevrtree ./cmd/sevrtree
+# 开机自启由 systemd 提供，无需 nssm
+```
+
+推送 `v*` 标签即可触发 GitHub Actions，分别在 Windows 与 Linux 上构建并创建 Release：Windows 产物为 zip（含 `sevrtree.exe`、`nssm.exe`），Linux 产物为 tar.gz（含 `sevrtree`），SHA256 校验值写入 Release 正文：
 
 ```powershell
 git tag v0.1.0
@@ -73,8 +92,13 @@ git push origin v0.1.0
 ## 运行
 
 ```powershell
-dist\sevrtree.exe                 # 建议以管理员身份运行
+dist\sevrtree.exe                 # Windows，建议以管理员身份运行
 dist\sevrtree.exe -addr 127.0.0.1:9000 -debug
+```
+
+```bash
+sudo ./dist/sevrtree              # Linux，建议以 root 运行
+sudo ./dist/sevrtree -addr 127.0.0.1:9000 -debug
 ```
 
 访问 `http://127.0.0.1:8088`。首次启动生成的管理员口令会打印在控制台，并写入 `data/initial-admin-password.txt`（权限 `0600`），登录后请在「设置」中修改。
@@ -92,7 +116,7 @@ cd web && pnpm dev                # 终端 2，/api 已代理至 8088
 
 ### 反向代理（推荐）
 
-1. 让服务监听所有网卡，并限制只有代理服务器可访问该端口（Windows 防火墙入站规则仅放行代理地址）：
+1. 让服务监听所有网卡，并限制只有代理服务器可访问该端口（Windows 防火墙入站规则 / Linux 安全组或 `ufw` 仅放行代理地址）：
 
 ```powershell
 setx SEVRTREE_ADDR 0.0.0.0:8088
@@ -182,7 +206,7 @@ internal/
   config/            配置加载与目录初始化
   logging/           slog 控制台 / 文件双通道
   manager/           任务生命周期、拓扑编排、日志缓冲
-  platform/          Windows 提权、进程树终止、nssm 服务
+  platform/          提权与进程树终止；nssm（Windows）/ systemd（Linux）服务托管
   procmon/           进程采集、依赖推导、服务特征库、WMI
   store/             SQLite（tasks / settings / audit_logs）
 web/                 Vite + Vue 3 前端工程，产物嵌入二进制
@@ -192,11 +216,11 @@ web/                 Vite + Vue 3 前端工程，产物嵌入二进制
 
 - 默认仅监听 `127.0.0.1`，不对外暴露。
 - 口令以 bcrypt（cost 12）散列存储；5 分钟内失败 5 次锁定 5 分钟。
-- 安装自启服务、读取高权限进程命令行需管理员权限。
+- 安装自启服务需管理员（Windows）或 root（Linux），读取其他用户进程的命令行同样需要相应权限。
 
 ## 贡献
 
-提交前请确保 `go vet ./...` 与 `pnpm build` 均通过；提交信息遵循 Conventional Commits（如 `feat: 支持进程一键加入自启`）。新增平台相关代码请放入 `_windows.go` / `_other.go` 并加构建标签。
+提交前请确保 `go vet ./...` 与 `pnpm build` 均通过；提交信息遵循 Conventional Commits（如 `feat: 支持进程一键加入自启`）。平台相关代码按 `_windows.go` / `_linux.go` / `_other.go` 拆分并用构建标签隔离。
 
 ## 许可证
 

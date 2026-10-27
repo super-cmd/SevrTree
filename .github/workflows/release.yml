@@ -9,9 +9,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: 构建并发布
-    runs-on: windows-latest
+  build:
+    name: 构建 ${{ matrix.suffix }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            suffix: windows-amd64
+            goos: windows
+          - os: ubuntu-latest
+            suffix: linux-amd64
+            goos: linux
 
     steps:
       - name: 检出代码
@@ -41,25 +51,41 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: 构建后端
+      - name: 构建后端（Windows）
+        if: matrix.goos == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $version = "${{ github.ref_name }}"
           $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $env:GOOS = "${{ matrix.goos }}"
+          $env:GOARCH = "amd64"
           go vet ./...
           go build -trimpath -ldflags "-s -w -X main.version=$version -X main.buildTime=$buildTime" -o dist/sevrtree.exe ./cmd/sevrtree
           "VERSION=$version" >> $env:GITHUB_ENV
-          "BUILD_TIME=$buildTime" >> $env:GITHUB_ENV
 
-      - name: 下载 nssm
+      - name: 构建后端（Linux）
+        if: matrix.goos == 'linux'
+        shell: bash
+        run: |
+          mkdir -p dist
+          VERSION="${{ github.ref_name }}"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export GOOS="${{ matrix.goos }}" GOARCH="amd64"
+          go vet ./...
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.buildTime=$BUILD_TIME" -o dist/sevrtree ./cmd/sevrtree
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: 下载 nssm（仅 Windows）
+        if: matrix.goos == 'windows'
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile nssm.zip -MaximumRetryCount 3 -RetryIntervalSec 5
           Expand-Archive nssm.zip -DestinationPath nssm
           Copy-Item "nssm/nssm-2.24/win64/nssm.exe" dist/nssm.exe
 
-      - name: 打包
+      - name: 打包（Windows）
+        if: matrix.goos == 'windows'
         shell: pwsh
         run: |
           $name = "SevrTree_$env:VERSION-windows-amd64"
@@ -67,24 +93,66 @@ jobs:
           Copy-Item dist/sevrtree.exe, dist/nssm.exe, README.md, LICENSE package/
           Compress-Archive -Path "package/*" -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "ASSET=$name.zip" >> $env:GITHUB_ENV
-          "CHECKSUM=$hash  $name.zip" >> $env:GITHUB_ENV
+          "$hash  $name.zip" | Out-File "checksums-${{ matrix.suffix }}.txt" -Encoding ascii
 
-      - name: 发布 Release
+      - name: 打包（Linux）
+        if: matrix.goos == 'linux'
+        shell: bash
+        run: |
+          name="SevrTree_${VERSION}-linux-amd64"
+          mkdir -p package
+          cp dist/sevrtree README.md LICENSE package/
+          chmod +x package/sevrtree
+          tar -czf "${name}.tar.gz" -C package .
+          sha256sum "${name}.tar.gz" > "checksums-${{ matrix.suffix }}.txt"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.suffix }}
+          path: |
+            SevrTree_*.zip
+            SevrTree_*.tar.gz
+            checksums-*.txt
+          if-no-files-found: error
+
+  release:
+    name: 发布 Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: 汇总校验值
+        shell: bash
+        run: |
+          cd assets
+          cat checksums-*.txt > checksums.txt
+          {
+            echo "Windows 与 Linux amd64 发布包。"
+            echo
+            echo "**SHA256**"
+            echo
+            echo '```'
+            cat checksums.txt
+            echo '```'
+            echo
+            echo "完整变更：${{ github.server_url }}/${{ github.repository }}/commits/${{ github.ref_name }}"
+          } > release-body.md
+          rm -f checksums-*.txt checksums.txt
+
+      - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: SevrTree ${{ github.ref_name }}
-          body: |
-            Windows amd64 发布包，内含 `sevrtree.exe`、`nssm.exe`、`README.md`、`LICENSE`。
-
-            **SHA256**
-
-            ```
-            ${{ env.CHECKSUM }}
-            ```
-
-            完整变更：${{ github.server_url }}/${{ github.repository }}/commits/${{ github.ref_name }}
+          body_path: assets/release-body.md
           files: |
-            ${{ env.ASSET }}
+            assets/SevrTree_*.zip
+            assets/SevrTree_*.tar.gz
           fail_on_unmatched_files: true
