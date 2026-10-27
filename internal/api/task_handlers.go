@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -310,7 +309,7 @@ func (s *Server) handleImportProcess(w http.ResponseWriter, r *http.Request) {
 		Name:               name,
 		Exe:                target.Exe,
 		Args:               args,
-		WorkDir:            filepath.Dir(target.Exe),
+		WorkDir:            procmon.SuggestWorkDir(target.Exe, target.Cmdline),
 		Env:                map[string]string{},
 		Enabled:            true,
 		AutoStart:          true,
@@ -340,6 +339,7 @@ func (s *Server) handleImportProcess(w http.ResponseWriter, r *http.Request) {
 		"name":    task.Name,
 		"exe":     task.Exe,
 		"args":    task.Args,
+		"workDir": task.WorkDir,
 		"port":    task.HealthPort,
 		"fromPid": pid,
 	})

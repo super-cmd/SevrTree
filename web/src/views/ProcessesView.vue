@@ -3,6 +3,7 @@ import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import {
   NButton,
   NCard,
+  NCheckbox,
   NDataTable,
   NDescriptions,
   NDescriptionsItem,
@@ -10,7 +11,6 @@ import {
   NDrawerContent,
   NInput,
   NSpace,
-  NSwitch,
   NTabPane,
   NTabs,
   NTag,
@@ -36,6 +36,8 @@ const loading = ref(true)
 const lastError = ref('')
 const keyword = ref('')
 const managedOnly = ref(false)
+const onlyListening = ref(true)
+const hideSystem = ref(true)
 const tab = ref<'tree' | 'topology'>('tree')
 const expandedRowKeys = ref<number[]>([])
 const selected = ref<ProcRow | null>(null)
@@ -50,6 +52,12 @@ const filteredProcesses = computed<ProcInfo[]>(() => {
   if (managedOnly.value) {
     list = list.filter((p) => p.managed)
   }
+  if (onlyListening.value) {
+    list = list.filter((p) => p.ports.length > 0)
+  }
+  if (hideSystem.value) {
+    list = list.filter((p) => !isSystemProcess(p))
+  }
   const kw = keyword.value.trim().toLowerCase()
   if (kw) {
     list = list.filter((p) =>
@@ -61,6 +69,15 @@ const filteredProcesses = computed<ProcInfo[]>(() => {
   }
   return list
 })
+
+function isSystemProcess(proc: ProcInfo): boolean {
+  const exe = proc.exe.toLowerCase().replace(/^\\\\\?\\/, '')
+  if (exe.startsWith('c:\\windows\\')) {
+    return true
+  }
+  const user = proc.user.toUpperCase()
+  return user === 'SYSTEM' || user.startsWith('NT AUTHORITY\\') || user.startsWith('NT SERVICE\\')
+}
 
 function buildTree(list: ProcInfo[]): ProcRow[] {
   const map = new Map<number, ProcRow>()
@@ -93,6 +110,7 @@ const tableData = computed<ProcRow[]>(() => {
 })
 
 const managedCount = computed(() => (snapshot.value?.processes ?? []).filter((p) => p.managed).length)
+const visibleCount = computed(() => filteredProcesses.value.length)
 
 function expandAll() {
   const keys: number[] = []
@@ -110,6 +128,13 @@ function expandAll() {
 
 function collapseAll() {
   expandedRowKeys.value = []
+}
+
+function resetFilters() {
+  keyword.value = ''
+  onlyListening.value = false
+  hideSystem.value = false
+  managedOnly.value = false
 }
 
 async function load() {
@@ -136,9 +161,11 @@ function openDetail(row: ProcRow) {
 async function importProcess(row: ProcRow) {
   importingPid.value = row.pid
   try {
-    const res = await api.post<{ id: number; name: string; port: number }>(`/api/processes/${row.pid}/task`)
+    const res = await api.post<{ id: number; name: string; port: number; workDir: string }>(
+      `/api/processes/${row.pid}/task`,
+    )
     const portTip = res.port ? `，健康检查端口 ${res.port}` : ''
-    message.success(`已将「${res.name}」加入开机自启${portTip}；可在「托管任务」中调整顺序与延迟`)
+    message.success(`已将「${res.name}」加入开机自启${portTip}；工作目录 ${res.workDir}，可在「托管任务」中调整`)
   } catch (err) {
     message.error(err instanceof ApiError ? err.message : '加入自启动失败')
   } finally {
@@ -267,20 +294,20 @@ onUnmounted(() => {
       <div>
         <h2 class="page-title">进程与依赖</h2>
         <p class="page-subtitle">
-          共 {{ snapshot?.total ?? 0 }} 个进程，托管 {{ managedCount }} 个；采集于 {{ formatTime(snapshot?.collectedAt) }}
+          共 {{ snapshot?.total ?? 0 }} 个进程，显示 {{ visibleCount }} 个，托管 {{ managedCount }} 个；采集于 {{ formatTime(snapshot?.collectedAt) }}
         </p>
       </div>
-      <n-space>
+      <n-space align="center">
         <n-input
           v-model:value="keyword"
           placeholder="搜索进程名 / 命令行 / 启动者 / 依赖"
           clearable
-          style="width: 300px"
+          style="width: 260px"
         />
-        <n-switch v-model:value="managedOnly">
-          <template #checked>仅托管</template>
-          <template #unchecked>全部</template>
-        </n-switch>
+        <n-checkbox v-model:checked="onlyListening">有端口</n-checkbox>
+        <n-checkbox v-model:checked="hideSystem">隐藏系统</n-checkbox>
+        <n-checkbox v-model:checked="managedOnly">仅托管</n-checkbox>
+        <n-button size="small" quaternary @click="resetFilters">重置</n-button>
         <n-button :loading="loading" @click="load">刷新</n-button>
       </n-space>
     </div>
@@ -374,7 +401,7 @@ onUnmounted(() => {
             {{ selected.managed ? '已在托管任务中' : '加入开机自启' }}
           </n-button>
           <span class="muted detail-hint">
-            将按当前命令行参数创建任务，默认开机自启；随后可在「托管任务」调整延迟、顺序与依赖。
+            按当前命令行参数创建任务并自动推断工作目录，默认开机自启；随后可在「托管任务」核对目录、调整延迟与顺序。
           </span>
         </div>
       </n-drawer-content>

@@ -362,6 +362,43 @@ func SuggestTaskName(exe, name, cmdline string) string {
 	return base
 }
 
+// SuggestWorkDir 推断适合作为任务工作目录的路径：
+// 优先取命令行中脚本或 jar 的绝对路径所在目录，其次回溯 Python 虚拟环境根目录，
+// 最后退回可执行文件所在目录。
+func SuggestWorkDir(exe, cmdline string) string {
+	for _, token := range splitCommandLine(cmdline) {
+		clean := strings.Trim(token, `"'`)
+		if clean == "" || !filepath.IsAbs(clean) || !isScriptToken(clean) {
+			continue
+		}
+		return filepath.Dir(clean)
+	}
+	if root := venvRoot(exe); root != "" {
+		return root
+	}
+	return filepath.Dir(exe)
+}
+
+func isScriptToken(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	for _, known := range scriptExtensions {
+		if ext == known {
+			return true
+		}
+	}
+	return false
+}
+
+// venvRoot 识别虚拟环境布局，返回项目根目录，例如 <project>/.venv/Scripts/python.exe。
+func venvRoot(exe string) string {
+	venvDir := filepath.Dir(filepath.Dir(exe))
+	switch strings.ToLower(filepath.Base(venvDir)) {
+	case ".venv", "venv", "env", ".env":
+		return filepath.Dir(venvDir)
+	}
+	return ""
+}
+
 // splitCommandLine 按空白切分命令行，保留引号内的空格。
 func splitCommandLine(s string) []string {
 	var out []string
